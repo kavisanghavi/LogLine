@@ -98,14 +98,19 @@ function register(app) {
                 // Ignore reaction errors (missing scope, already reacted, etc.)
             }
 
-            // Refine the entry with LLM
-            const refinedEntry = await refineEntry(text);
+            // Check if user wants LLM enhancement (prefix with +)
+            let entryText = text;
+            let wasEnhanced = false;
+            if (text.startsWith('+')) {
+                entryText = await refineEntry(text.substring(1).trim());
+                wasEnhanced = true;
+            }
 
             // Append to Google Doc
             await appendEntry(
                 user.google_refresh_token,
                 user.google_doc_id,
-                refinedEntry,
+                entryText,
                 user.timezone || 'America/New_York'
             );
 
@@ -130,16 +135,16 @@ function register(app) {
                 // Ignore
             }
 
-            // Send confirmation with refined text if different
-            if (refinedEntry !== text) {
+            // Send confirmation
+            if (wasEnhanced) {
                 await say({
-                    text: `Logged: ${refinedEntry.split('\n')[0]}`,
+                    text: `Logged (enhanced): ${entryText}`,
                     blocks: [
                         {
                             type: 'section',
                             text: {
                                 type: 'mrkdwn',
-                                text: `✅ *Logged:*\n• ${refinedEntry.replace(/\n/g, '\n• ')}`,
+                                text: `✨ *Logged (enhanced):*\n• ${entryText}`,
                             },
                         },
                         {
@@ -155,13 +160,13 @@ function register(app) {
                 });
             } else {
                 await say({
-                    text: `Logged: ${text}`,
+                    text: `Logged: ${entryText}`,
                     blocks: [
                         {
                             type: 'section',
                             text: {
                                 type: 'mrkdwn',
-                                text: `✅ *Logged:* ${text}`,
+                                text: `✅ *Logged:* ${entryText}`,
                             },
                         },
                         {
@@ -169,7 +174,7 @@ function register(app) {
                             elements: [
                                 {
                                     type: 'mrkdwn',
-                                    text: `<https://docs.google.com/document/d/${user.google_doc_id}/edit|View your log>`,
+                                    text: `<https://docs.google.com/document/d/${user.google_doc_id}/edit|View your log> • Tip: Start with \`+\` to enhance with AI`,
                                 },
                             ],
                         },

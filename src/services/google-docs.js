@@ -257,7 +257,8 @@ async function getEntriesForDateRange(refreshToken, docId, startDate, endDate) {
     let currentDate = null;
 
     for (const line of lines) {
-        const dateMatch = line.match(/^##?\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(\w+)\s+(\d+)\w+,\s+(\d+)/);
+        // Match date headings with or without ## prefix (handles both old markdown and new proper heading format)
+        const dateMatch = line.match(/^(##?\s+)?(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(\w+)\s+(\d+)\w+,\s+(\d+)/);
 
         if (dateMatch) {
             const monthNames = {
@@ -265,9 +266,10 @@ async function getEntriesForDateRange(refreshToken, docId, startDate, endDate) {
                 'May': 4, 'June': 5, 'July': 6, 'August': 7,
                 'September': 8, 'October': 9, 'November': 10, 'December': 11
             };
-            const year = parseInt(dateMatch[4]);
-            const month = monthNames[dateMatch[2]];
-            const day = parseInt(dateMatch[3]);
+            // Group indices: [1]=optional prefix, [2]=day name, [3]=month, [4]=date, [5]=year
+            const year = parseInt(dateMatch[5]);
+            const month = monthNames[dateMatch[3]];
+            const day = parseInt(dateMatch[4]);
             currentDate = new Date(year, month, day);
             continue;
         }
@@ -286,10 +288,67 @@ async function getEntriesForDateRange(refreshToken, docId, startDate, endDate) {
     return entries;
 }
 
+/**
+ * Remove the last entry from the document
+ * @param {string} refreshToken - User's Google refresh token
+ * @param {string} docId - Google Doc ID
+ * @returns {Object} Removed entry info or null
+ */
+async function removeLastEntry(refreshToken, docId) {
+    const auth = getAuthenticatedClient(refreshToken);
+    const docs = google.docs({ version: 'v1', auth });
+
+    const doc = await docs.documents.get({ documentId: docId });
+    const content = doc.data.body.content;
+
+    // Find the last bullet entry
+    let lastBulletStart = null;
+    let lastBulletEnd = null;
+    let lastBulletText = null;
+
+    for (const element of content) {
+        if (element.paragraph && element.paragraph.elements) {
+            const paragraphText = element.paragraph.elements
+                .map(el => el.textRun?.content || '')
+                .join('');
+
+            if (paragraphText.trim().startsWith('•')) {
+                lastBulletStart = element.startIndex;
+                lastBulletEnd = element.endIndex;
+                lastBulletText = paragraphText.trim().substring(1).trim();
+            }
+        }
+    }
+
+    if (!lastBulletStart || !lastBulletEnd) {
+        return null;
+    }
+
+    // Delete the last bullet entry
+    await docs.documents.batchUpdate({
+        documentId: docId,
+        requestBody: {
+            requests: [
+                {
+                    deleteContentRange: {
+                        range: {
+                            startIndex: lastBulletStart,
+                            endIndex: lastBulletEnd,
+                        },
+                    },
+                },
+            ],
+        },
+    });
+
+    return { text: lastBulletText };
+}
+
 module.exports = {
     createCheckinDoc,
     getDocContent,
     extractTextContent,
     appendEntry,
     getEntriesForDateRange,
+    removeLastEntry,
 };

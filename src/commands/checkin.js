@@ -198,11 +198,44 @@ async function handleWeekly(command, respond) {
  * Handle /checkin undo
  */
 async function handleUndo(command, respond) {
-    // TODO: Implement undo functionality
-    await respond({
-        text: '🚧 Undo feature coming soon! For now, you can edit entries directly in your Google Doc.',
-        response_type: 'ephemeral',
-    });
+    const { getUser } = require('../db/firestore');
+    const { removeLastEntry } = require('../services/google-docs');
+
+    try {
+        const user = await getUser(command.team_id, command.user_id);
+
+        if (!user || !user.google_doc_id) {
+            await respond({
+                text: '❌ You haven\'t set up Daily Check-ins yet. Run `/checkin setup` to get started!',
+                response_type: 'ephemeral',
+            });
+            return;
+        }
+
+        const removed = await removeLastEntry(
+            user.google_refresh_token,
+            user.google_doc_id
+        );
+
+        if (!removed) {
+            await respond({
+                text: '🤷 No entries found to remove.',
+                response_type: 'ephemeral',
+            });
+            return;
+        }
+
+        await respond({
+            text: `🗑️ Removed: "${removed.text}"`,
+            response_type: 'ephemeral',
+        });
+    } catch (error) {
+        console.error('Undo failed:', error);
+        await respond({
+            text: '❌ Error removing entry. Please try again.',
+            response_type: 'ephemeral',
+        });
+    }
 }
 
 /**

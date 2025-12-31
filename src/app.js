@@ -10,17 +10,17 @@ const express = require('express');
 
 // Create Express receiver for custom routes
 const receiver = new ExpressReceiver({
-    signingSecret: process.env.SLACK_SIGNING_SECRET,
-    processBeforeResponse: true,
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+  processBeforeResponse: true,
 });
 
 // Initialize Bolt app
 const app = new App({
-    token: process.env.SLACK_BOT_TOKEN,
-    receiver,
-    // For Socket Mode (optional, for development)
-    // socketMode: true,
-    // appToken: process.env.SLACK_APP_TOKEN,
+  token: process.env.SLACK_BOT_TOKEN,
+  receiver,
+  // For Socket Mode (optional, for development)
+  // socketMode: true,
+  // appToken: process.env.SLACK_APP_TOKEN,
 });
 
 // Access Express app for custom routes
@@ -51,94 +51,97 @@ const { createCheckinDoc } = require('./services/google-docs');
 const { saveUser } = require('./db/firestore');
 
 expressApp.get('/oauth/google/callback', async (req, res) => {
-    const { code, state } = req.query;
+  const { code, state } = req.query;
 
-    if (!code) {
-        return res.status(400).send('Missing authorization code');
+  if (!code) {
+    return res.status(400).send('Missing authorization code');
+  }
+
+  let stateData;
+  try {
+    stateData = JSON.parse(state);
+  } catch (error) {
+    return res.status(400).send('Invalid state parameter');
+  }
+
+  const { userId, teamId } = stateData;
+
+  try {
+    // Exchange code for tokens
+    const tokens = await getTokensFromCode(code);
+
+    if (!tokens.refresh_token) {
+      return res.status(400).send(
+        'No refresh token received. Please try again and make sure to grant offline access.'
+      );
     }
 
-    let stateData;
+    // Get user info from Slack (including timezone)
+    let userName = 'User';
+    let timezone = 'America/New_York';
     try {
-        stateData = JSON.parse(state);
+      const userInfo = await app.client.users.info({ user: userId });
+      userName = userInfo.user.real_name || userInfo.user.name || 'User';
+      timezone = userInfo.user.tz || 'America/New_York';
     } catch (error) {
-        return res.status(400).send('Invalid state parameter');
+      console.error('Failed to get user info:', error.message);
     }
 
-    const { userId, teamId } = stateData;
+    // Create a new Google Doc
+    const doc = await createCheckinDoc(tokens.refresh_token, userName);
 
+    // Save user data (including timezone)
+    await saveUser({
+      teamId,
+      userId,
+      googleRefreshToken: tokens.refresh_token,
+      googleDocId: doc.docId,
+      timezone,
+    });
+
+    // Notify user in Slack
     try {
-        // Exchange code for tokens
-        const tokens = await getTokensFromCode(code);
+      await app.client.chat.postMessage({
+        channel: userId,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '🎉 *You\'re all set!*\n\nYour Daily Check-in doc has been created.',
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📄 *Your document:* <${doc.docUrl}|${doc.title}>`,
+            },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*How to use:*\nJust send me a DM with what you worked on, and I\'ll add it to your log!',
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: 'Try `/checkin status` to see your connection details.',
+              },
+            ],
+          },
+        ],
+      });
+    } catch (error) {
+      console.error('Failed to send success message:', error.message);
+    }
 
-        if (!tokens.refresh_token) {
-            return res.status(400).send(
-                'No refresh token received. Please try again and make sure to grant offline access.'
-            );
-        }
-
-        // Get user info from Slack
-        let userName = 'User';
-        try {
-            const userInfo = await app.client.users.info({ user: userId });
-            userName = userInfo.user.real_name || userInfo.user.name || 'User';
-        } catch (error) {
-            console.error('Failed to get user info:', error.message);
-        }
-
-        // Create a new Google Doc
-        const doc = await createCheckinDoc(tokens.refresh_token, userName);
-
-        // Save user data
-        await saveUser({
-            teamId,
-            userId,
-            googleRefreshToken: tokens.refresh_token,
-            googleDocId: doc.docId,
-        });
-
-        // Notify user in Slack
-        try {
-            await app.client.chat.postMessage({
-                channel: userId,
-                blocks: [
-                    {
-                        type: 'section',
-                        text: {
-                            type: 'mrkdwn',
-                            text: '🎉 *You\'re all set!*\n\nYour Daily Check-in doc has been created.',
-                        },
-                    },
-                    {
-                        type: 'section',
-                        text: {
-                            type: 'mrkdwn',
-                            text: `📄 *Your document:* <${doc.docUrl}|${doc.title}>`,
-                        },
-                    },
-                    {
-                        type: 'section',
-                        text: {
-                            type: 'mrkdwn',
-                            text: '*How to use:*\nJust send me a DM with what you worked on, and I\'ll add it to your log!',
-                        },
-                    },
-                    {
-                        type: 'context',
-                        elements: [
-                            {
-                                type: 'mrkdwn',
-                                text: 'Try `/checkin status` to see your connection details.',
-                            },
-                        ],
-                    },
-                ],
-            });
-        } catch (error) {
-            console.error('Failed to send success message:', error.message);
-        }
-
-        // Send success HTML
-        res.send(`
+    // Send success HTML
+    res.send(`
       <!DOCTYPE html>
       <html>
         <head>
@@ -187,9 +190,9 @@ expressApp.get('/oauth/google/callback', async (req, res) => {
         </body>
       </html>
     `);
-    } catch (error) {
-        console.error('OAuth callback error:', error);
-        res.status(500).send(`
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.status(500).send(`
       <!DOCTYPE html>
       <html>
         <head>
@@ -224,12 +227,12 @@ expressApp.get('/oauth/google/callback', async (req, res) => {
         </body>
       </html>
     `);
-    }
+  }
 });
 
 // Health check endpoint
 expressApp.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // =============================================================================
@@ -239,7 +242,7 @@ expressApp.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 (async () => {
-    await app.start(PORT);
-    console.log(`⚡️ Daily Check-in bot is running on port ${PORT}`);
-    console.log(`🔗 OAuth callback: http://localhost:${PORT}/oauth/google/callback`);
+  await app.start(PORT);
+  console.log(`⚡️ Daily Check-in bot is running on port ${PORT}`);
+  console.log(`🔗 OAuth callback: http://localhost:${PORT}/oauth/google/callback`);
 })();

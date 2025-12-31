@@ -34,21 +34,20 @@ async function refineEntry(rawInput) {
         const client = getClient();
         const model = client.getGenerativeModel({ model: 'gemini-flash-latest' });
 
-        const prompt = `You are helping someone write their personal work journal. Clean up this quick note into a clear, natural-sounding entry.
+        const prompt = `Clean up this work log entry. Only fix grammar and make it read naturally - do NOT add any details, context, or information that wasn't in the original.
 
 Rules:
-- Keep it casual and personal, like you're writing for yourself
-- Plain text only, no markdown or formatting
-- Keep the same level of detail as the input (don't trim long entries)
-- Start with an action verb (past tense)
-- If numbers or metrics are mentioned, ALWAYS include them
-- Don't add corporate jargon, keep it natural
-- Preserve the original meaning and important details
+- NEVER invent or assume details not explicitly stated
+- Only fix spelling, grammar, and sentence structure
+- Keep the exact same meaning and level of detail
+- Plain text only, no markdown
+- Start with a past-tense verb if possible
+- If the input is already clear, return it mostly as-is
 
 Examples:
-- "fixed 3 bugs" → "Fixed 3 bugs in the login flow"
-- "meeting with design" → "Had a sync with the design team"
-- "spent 2 hours debugging the api issue, turns out it was a caching problem" → "Spent 2 hours debugging the API issue - turned out to be a caching problem"
+- "fixed 3 bugs" → "Fixed 3 bugs"
+- "meeting with design about the new feature" → "Had a meeting with design about the new feature"
+- "This is the first entry" → "This is the first entry"
 
 Input: "${rawInput}"
 
@@ -94,7 +93,7 @@ function cleanupEntry(input) {
  */
 async function generateWeeklySummary(entries, dateRange) {
     if (!entries || entries.length === 0) {
-        return `📊 **Your Week in Review (${dateRange})**\n\nNo entries found for this week. Start logging your work!`;
+        return `📊 *Your Week (${dateRange})*\n\nNo entries yet! Start logging your work by sending me a DM.`;
     }
 
     // If no Gemini, generate basic summary
@@ -110,17 +109,17 @@ async function generateWeeklySummary(entries, dateRange) {
             `- ${e.date.toDateString()}: ${e.text}`
         ).join('\n');
 
-        const prompt = `Analyze these work log entries and create a concise weekly summary.
+        const prompt = `Summarize this week's work log for a personal review. Keep it casual and useful.
 
 Entries:
 ${entriesText}
 
-Create a summary with:
-1. 📊 Week header with date range: ${dateRange}
-2. 🎯 Key Accomplishments (2-4 bullet points of the most impactful work)
-3. 📈 Themes (categorize what percentage of work fell into what categories)
+Create a brief summary with:
+1. A header with the date range: ${dateRange}
+2. Key wins (2-3 bullet points of the most notable work)
+3. What took most of your time (1 sentence)
 
-Keep it brief and actionable. Use emojis sparingly. Output as plain text with markdown formatting.`;
+Keep it short and personal. Use emojis sparingly. Plain text only, no markdown asterisks.`;
 
         const result = await model.generateContent(prompt);
         return result.response.text().trim();
