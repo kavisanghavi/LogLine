@@ -1,0 +1,34 @@
+{
+  "name": "daily-checkin",
+  "version": "1.0.0",
+  "description": "Slack bot for logging daily work to Google Docs with LLM refinement",
+  "main": "src/app.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "slack",
+    "productivity",
+    "google-docs",
+    "daily-log"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google-cloud/firestore": "^8.0.0",
+    "@google/generative-ai": "^0.24.1",
+    "@slack/bolt": "^4.6.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "googleapis": "^169.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
