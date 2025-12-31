@@ -1,109 +1,181 @@
-# Daily Check-in Bot
+# Daily Check-in Bot 📝
 
-A Slack bot that captures your daily work updates via DM and logs them to a Google Doc you own. Features LLM-powered input refinement and weekly summaries.
+A Slack bot that captures your daily work updates via DM and logs them to a Google Doc you own.
 
 ## Features
 
-- 📝 **DM Logging**: Send a message to the bot and it's automatically logged
-- 🤖 **LLM Refinement**: Cleans up your input into professional bullet points
-- 📅 **Date-Based Grouping**: Entries organized by day
-- 📊 **Weekly Summaries**: AI-generated weekly recap
-- 🔒 **Secure**: OAuth tokens encrypted at rest, `drive.file` scope only
+- **📝 DM Logging**: Send a message to the bot → instantly logged
+- **✨ Optional AI Enhancement**: Start with `+` to clean up grammar
+- **📅 Date-Based Grouping**: Entries organized by day with proper headings
+- **📊 Weekly Summaries**: `/checkin weekly` for AI-generated recaps
+- **🔙 Undo**: `/checkin undo` to remove the last entry
+- **🔒 Secure**: Tokens encrypted at rest, minimal OAuth scopes
+
+---
 
 ## Quick Start
 
-### 1. Prerequisites
+### Prerequisites
 
-- Node.js 24+ (run `nvm use` to use the project's version)
-- A Slack workspace where you can install apps
-- Google Cloud project with Docs API enabled
+- Node.js 20+ (`nvm use` to use project version)
+- Slack workspace with admin access
+- Google Cloud project
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/your-username/daily-checkin.git
+cd daily-checkin
+npm install
+```
 
 ### 2. Create Slack App
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps)
-2. Create new app from scratch
-3. Add these OAuth scopes under "Bot Token Scopes":
-   - `chat:write`
-   - `commands`
-   - `im:history`
-   - `users:read`
-4. Create a slash command `/checkin`
-5. Enable Event Subscriptions and subscribe to `message.im`
-6. Install to workspace
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App**
+2. Choose **From a manifest** → paste contents of `slack-app-manifest.yaml`
+3. Install to your workspace
+4. Copy **Bot Token** and **Signing Secret** to `.env`
 
-### 3. Create Google Cloud Project
+### 3. Set Up Google Cloud
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create new project
-3. Enable "Google Docs API" and "Google Drive API"
-4. Create OAuth 2.0 credentials (Web application)
-5. Add redirect URI: `http://localhost:3000/oauth/google/callback`
+1. Create project at [console.cloud.google.com](https://console.cloud.google.com)
+2. Enable **Google Docs API** and **Google Drive API**
+3. Create **OAuth 2.0 credentials** (Web application type)
+4. Add redirect URI: `http://localhost:3000/oauth/google/callback`
+5. Copy Client ID and Secret to `.env`
 
 ### 4. Set Up Firestore
 
-1. In Google Cloud Console, go to Firestore
-2. Create a database (Native mode)
-3. Set up Application Default Credentials:
-   ```bash
-   gcloud auth application-default login
-   ```
+```bash
+# Enable Firestore in your GCP project, then:
+gcloud auth application-default login
+```
 
 ### 5. Configure Environment
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
 ```
 
-Generate an encryption key:
+Generate encryption key:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 6. Run the Bot
+### 6. Start ngrok (for local development)
 
 ```bash
-# Install dependencies
-npm install
-
-# Development (with hot reload)
-npm run dev
-
-# Production
-npm start
+ngrok http 3000
 ```
 
-## Commands
+Copy the HTTPS URL and update your Slack app's:
+- **Slash Commands URL**: `https://xxxx.ngrok.io/slack/events`
+- **Event Subscriptions URL**: `https://xxxx.ngrok.io/slack/events`
+
+### 7. Run
+
+```bash
+npm run dev
+```
+
+---
+
+## Usage
+
+### Logging Entries
+
+Just DM the bot:
+```
+Fixed the login bug
+```
+
+With AI cleanup (prefix with `+`):
+```
++fixed login bug, took 2 hours
+```
+
+### Commands
 
 | Command | Description |
 |---------|-------------|
 | `/checkin setup` | Connect Google account & create doc |
 | `/checkin status` | Check your connection |
-| `/checkin weekly` | Get weekly summary |
+| `/checkin weekly` | Get AI weekly summary |
 | `/checkin undo` | Remove last entry |
 | `/checkin help` | Show help |
 
-**To log an entry**: Just DM the bot with your update!
+---
+
+## Multi-Workspace Deployment
+
+To let others install your app:
+
+### 1. Enable Distribution
+
+1. Slack App Dashboard → **Manage Distribution**
+2. Complete all checklist items
+3. **Activate Public Distribution**
+
+### 2. Deploy to Cloud Run
+
+```bash
+# Build & deploy
+gcloud run deploy daily-checkin \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+### 3. Update URLs
+
+Replace `localhost:3000` with your Cloud Run URL in:
+- Slack App settings (slash command, events)
+- Google OAuth redirect URI
+
+---
+
+## Security
+
+- **Encryption**: All tokens encrypted with AES-256-GCM before storage
+- **Minimal Scopes**: 
+  - Google: `drive.file` (only app-created files)
+  - Slack: No access to channels, just DMs
+- **User Ownership**: Docs are owned by users, not the app
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full security model.
+
+---
 
 ## Project Structure
 
 ```
 src/
-├── app.js              # Main entry point
+├── app.js              # Main entry, Express routes
 ├── commands/
-│   └── checkin.js      # /checkin command handler
+│   └── checkin.js      # /checkin handlers
 ├── events/
-│   └── message.js      # DM message handler
+│   └── message.js      # DM handler
 ├── services/
-│   ├── google-docs.js  # Google Docs API
-│   ├── llm.js          # Gemini integration
+│   ├── google-docs.js  # Doc operations
+│   ├── llm.js          # Gemini API
 │   └── oauth.js        # Google OAuth
 ├── db/
-│   ├── encryption.js   # Token encryption
-│   └── firestore.js    # Database client
+│   ├── encryption.js   # AES-256-GCM
+│   └── firestore.js    # Database
 └── utils/
     └── date-formatter.js
 ```
+
+---
+
+## Cost
+
+**$0/month** on free tier:
+- Cloud Run: 2M requests free
+- Firestore: 50K reads/day free
+- Gemini: 15 RPM free
+
+---
 
 ## License
 
