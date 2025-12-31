@@ -236,6 +236,91 @@ expressApp.get('/health', (req, res) => {
 });
 
 // =============================================================================
+// Daily Reminder Trigger (Called by Cloud Scheduler)
+// =============================================================================
+
+const { getAllUsersForReminders } = require('./db/firestore');
+
+expressApp.post('/api/trigger-reminders', async (req, res) => {
+  // Verify request is from Cloud Scheduler (optional: add auth header check)
+  const authHeader = req.headers.authorization;
+  if (process.env.REMINDER_SECRET && authHeader !== `Bearer ${process.env.REMINDER_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const users = await getAllUsersForReminders();
+    const now = new Date();
+    let sent = 0;
+
+    for (const user of users) {
+      // Skip users with reminders disabled
+      if (!user.reminder_time || user.reminder_time === 'off') continue;
+
+      // Check if it's the right time in user's timezone
+      const userTime = now.toLocaleTimeString('en-US', {
+        timeZone: user.timezone || 'America/New_York',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+
+      // Allow 5-minute window for scheduler timing
+      const [targetHour, targetMin] = user.reminder_time.split(':').map(Number);
+      const [currentHour, currentMin] = userTime.split(':').map(Number);
+
+      const targetMinutes = targetHour * 60 + targetMin;
+      const currentMinutes = currentHour * 60 + currentMin;
+
+      if (Math.abs(targetMinutes - currentMinutes) > 5) continue;
+
+      // Check if user already logged today
+      if (user.last_log_at) {
+        const lastLog = user.last_log_at.toDate ? user.last_log_at.toDate() : new Date(user.last_log_at);
+        const lastLogDate = lastLog.toLocaleDateString('en-US', { timeZone: user.timezone || 'America/New_York' });
+        const todayDate = now.toLocaleDateString('en-US', { timeZone: user.timezone || 'America/New_York' });
+
+        if (lastLogDate === todayDate) continue; // Already logged today
+      }
+
+      // Send reminder
+      try {
+        await app.client.chat.postMessage({
+          channel: user.slack_user_id,
+          text: '👋 Hey! What did you work on today?',
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `👋 *Daily Check-in Reminder*\n\nWhat did you work on today? Just reply to this message to log it!`,
+              },
+            },
+            {
+              type: 'context',
+              elements: [
+                {
+                  type: 'mrkdwn',
+                  text: user.current_streak ? `🔥 Current streak: ${user.current_streak} days` : 'Start your streak today!',
+                },
+              ],
+            },
+          ],
+        });
+        sent++;
+      } catch (error) {
+        console.error(`Failed to send reminder to ${user.slack_user_id}:`, error.message);
+      }
+    }
+
+    res.json({ success: true, reminders_sent: sent });
+  } catch (error) {
+    console.error('Reminder trigger failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // Start the app
 // =============================================================================
 

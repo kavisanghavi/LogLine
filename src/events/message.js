@@ -3,9 +3,9 @@
  * Captures DMs and logs them to the user's Google Doc
  */
 
-const { getUser } = require('../db/firestore');
+const { getUser, updateStreak } = require('../db/firestore');
 const { appendEntry } = require('../services/google-docs');
-const { refineEntry } = require('../services/llm');
+const { refineEntry, transcribeAudio } = require('../services/llm');
 
 // In-memory cache to prevent duplicate message processing
 const processedMessages = new Set();
@@ -40,7 +40,38 @@ function register(app) {
         setTimeout(() => processedMessages.delete(messageKey), MESSAGE_CACHE_TTL);
 
         const userId = message.user;
-        const text = message.text;
+        let text = message.text || '';
+
+        // Check for audio/voice files
+        if (message.files && message.files.length > 0) {
+            const audioFile = message.files.find(f =>
+                f.mimetype?.startsWith('audio/') ||
+                f.filetype === 'webm' ||
+                f.filetype === 'mp4' ||
+                f.filetype === 'm4a'
+            );
+
+            if (audioFile) {
+                try {
+                    // Download and transcribe the audio
+                    const transcription = await transcribeAudio(audioFile, client);
+                    if (transcription) {
+                        text = transcription;
+                        // Let the user know we transcribed their voice note
+                        console.log(`Transcribed voice note: ${transcription.substring(0, 50)}...`);
+                    }
+                } catch (error) {
+                    console.error('Audio transcription failed:', error.message);
+                    await say('🎤 I couldn\'t transcribe your voice note. Please try typing your update instead.');
+                    return;
+                }
+            }
+        }
+
+        // Skip if no text content
+        if (!text || text.trim() === '') {
+            return;
+        }
 
         // Get the team ID from the message context
         // In DMs, we need to look this up or use a default
@@ -113,6 +144,9 @@ function register(app) {
                 entryText,
                 user.timezone || 'America/New_York'
             );
+
+            // Update user streak
+            const streak = await updateStreak(teamId, userId, user.timezone || 'America/New_York');
 
             // Remove processing reaction, add success (optional)
             try {

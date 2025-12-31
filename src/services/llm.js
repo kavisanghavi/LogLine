@@ -161,8 +161,68 @@ function generateBasicSummary(entries, dateRange) {
     return summary.join('\n');
 }
 
+/**
+ * Transcribe audio file to text using Gemini
+ * @param {Object} audioFile - Slack audio file object
+ * @param {Object} client - Slack client for downloading
+ * @returns {string|null} Transcribed text or null
+ */
+async function transcribeAudio(audioFile, client) {
+    if (!process.env.GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY required for audio transcription');
+    }
+
+    try {
+        // Download the audio file from Slack
+        const response = await fetch(audioFile.url_private_download, {
+            headers: {
+                'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to download audio: ${response.status}`);
+        }
+
+        const audioBuffer = await response.arrayBuffer();
+        const base64Audio = Buffer.from(audioBuffer).toString('base64');
+
+        // Determine mime type
+        let mimeType = audioFile.mimetype || 'audio/webm';
+        if (audioFile.filetype === 'webm') mimeType = 'audio/webm';
+        if (audioFile.filetype === 'm4a') mimeType = 'audio/mp4';
+        if (audioFile.filetype === 'mp4') mimeType = 'audio/mp4';
+
+        // Use Gemini to transcribe
+        const genAI = getClient();
+        const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+
+        const result = await model.generateContent([
+            {
+                inlineData: {
+                    data: base64Audio,
+                    mimeType: mimeType,
+                },
+            },
+            'Transcribe this audio message. Output only the transcribed text, nothing else. If you cannot understand the audio, say "Could not transcribe".',
+        ]);
+
+        const transcription = result.response.text().trim();
+
+        if (transcription.toLowerCase().includes('could not transcribe')) {
+            return null;
+        }
+
+        return transcription;
+    } catch (error) {
+        console.error('Transcription error:', error.message);
+        throw error;
+    }
+}
+
 module.exports = {
     refineEntry,
     generateWeeklySummary,
     cleanupEntry,
+    transcribeAudio,
 };

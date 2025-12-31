@@ -175,6 +175,88 @@ async function getUsersByReminderTime(reminderTime) {
     return users;
 }
 
+/**
+ * Update user streak when they log an entry
+ * @param {string} teamId - Slack team ID
+ * @param {string} userId - Slack user ID
+ * @param {string} timezone - User's timezone
+ * @returns {number} Current streak count
+ */
+async function updateStreak(teamId, userId, timezone = 'America/New_York') {
+    const docId = getUserDocId(teamId, userId);
+    const docRef = usersCollection.doc(docId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+        return 0;
+    }
+
+    const data = doc.data();
+    const now = new Date();
+
+    // Get today's date in user's timezone
+    const todayStr = now.toLocaleDateString('en-US', { timeZone: timezone });
+    const today = new Date(todayStr);
+    today.setHours(0, 0, 0, 0);
+
+    // Get last log date
+    let lastLogDate = null;
+    if (data.last_log_at) {
+        const lastLog = data.last_log_at.toDate ? data.last_log_at.toDate() : new Date(data.last_log_at);
+        const lastLogStr = lastLog.toLocaleDateString('en-US', { timeZone: timezone });
+        lastLogDate = new Date(lastLogStr);
+        lastLogDate.setHours(0, 0, 0, 0);
+    }
+
+    let newStreak = data.current_streak || 0;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    if (!lastLogDate) {
+        // First log ever
+        newStreak = 1;
+    } else if (today.getTime() === lastLogDate.getTime()) {
+        // Already logged today, don't change streak
+    } else if (today.getTime() - lastLogDate.getTime() === oneDayMs) {
+        // Logged yesterday, increment streak
+        newStreak += 1;
+    } else if (today.getTime() - lastLogDate.getTime() > oneDayMs) {
+        // Missed a day, reset streak
+        newStreak = 1;
+    }
+
+    // Update Firestore
+    await docRef.update({
+        last_log_at: Firestore.FieldValue.serverTimestamp(),
+        current_streak: newStreak,
+        longest_streak: Math.max(newStreak, data.longest_streak || 0),
+    });
+
+    return newStreak;
+}
+
+/**
+ * Get all users who should receive reminders (for API endpoint)
+ * @returns {Array} List of all users with their settings
+ */
+async function getAllUsersForReminders() {
+    const snapshot = await usersCollection.get();
+    const users = [];
+
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.google_refresh_token) {
+            try {
+                data.google_refresh_token = decrypt(data.google_refresh_token);
+            } catch (error) {
+                data.google_refresh_token = null;
+            }
+        }
+        users.push(data);
+    });
+
+    return users;
+}
+
 module.exports = {
     saveUser,
     getUser,
@@ -183,5 +265,7 @@ module.exports = {
     getInstallation,
     deleteInstallation,
     getUsersByReminderTime,
+    updateStreak,
+    getAllUsersForReminders,
     db,
 };
