@@ -100,17 +100,32 @@ async function deleteUser(teamId, userId) {
 
 /**
  * Save Slack workspace installation
- * @param {Object} installation
- * @param {string} installation.teamId - Slack team ID
- * @param {string} installation.botToken - Encrypted bot token
- * @param {string} installation.botId - Bot user ID
+ * Supports both bot and user tokens as per Bolt Installation object
+ * @param {Object} installation - Bolt installation object
  */
 async function saveInstallation(installation) {
-    await installationsCollection.doc(installation.teamId).set({
-        slack_bot_token: encrypt(installation.botToken),
-        slack_bot_id: installation.botId,
+    const teamId = installation.team.id;
+    const dataToSave = {
+        team: installation.team,
+        enterprise: installation.enterprise || null,
+        user: {
+            id: installation.user.id,
+            token: installation.user.token ? encrypt(installation.user.token) : null,
+            scopes: installation.user.scopes || null,
+        },
+        bot: {
+            id: installation.bot.id,
+            userId: installation.bot.userId,
+            token: encrypt(installation.bot.token),
+            scopes: installation.bot.scopes,
+        },
+        incomingWebhook: installation.incomingWebhook || null,
+        appId: installation.appId,
+        isEnterpriseInstall: installation.isEnterpriseInstall || false,
         installed_at: Firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    await installationsCollection.doc(teamId).set(dataToSave);
 }
 
 /**
@@ -127,14 +142,12 @@ async function getInstallation(teamId) {
 
     const data = doc.data();
 
-    // Decrypt bot token
-    if (data.slack_bot_token) {
-        try {
-            data.slack_bot_token = decrypt(data.slack_bot_token);
-        } catch (error) {
-            console.error('Failed to decrypt bot token:', error.message);
-            data.slack_bot_token = null;
-        }
+    // Decrypt tokens
+    if (data.bot && data.bot.token) {
+        data.bot.token = decrypt(data.bot.token);
+    }
+    if (data.user && data.user.token) {
+        data.user.token = decrypt(data.user.token);
     }
 
     return data;

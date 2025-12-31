@@ -7,20 +7,41 @@ require('dotenv').config();
 
 const { App, ExpressReceiver } = require('@slack/bolt');
 const express = require('express');
+const { saveInstallation, getInstallation, deleteInstallation } = require('./db/firestore');
 
-// Create Express receiver for custom routes
+// Create Express receiver for custom routes and OAuth handling
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
+  clientId: process.env.SLACK_CLIENT_ID,
+  clientSecret: process.env.SLACK_CLIENT_SECRET,
+  stateSecret: process.env.SLACK_STATE_SECRET || 'daily-checkin-state-secret',
+  scopes: [
+    'chat:write',
+    'commands',
+    'files:read',
+    'im:history',
+    'im:read',
+    'im:write',
+    'reactions:write',
+    'users:read'
+  ],
+  installationStore: {
+    storeInstallation: async (installation) => {
+      await saveInstallation(installation);
+    },
+    fetchInstallation: async (installQuery) => {
+      return await getInstallation(installQuery.teamId);
+    },
+    deleteInstallation: async (installQuery) => {
+      await deleteInstallation(installQuery.teamId);
+    },
+  },
   processBeforeResponse: true,
 });
 
 // Initialize Bolt app
 const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
   receiver,
-  // For Socket Mode (optional, for development)
-  // socketMode: true,
-  // appToken: process.env.SLACK_APP_TOKEN,
 });
 
 // Access Express app for custom routes
@@ -29,6 +50,171 @@ const expressApp = receiver.app;
 // Middleware for JSON parsing
 expressApp.use(express.json());
 expressApp.use(express.urlencoded({ extended: true }));
+
+// Installation landing page
+expressApp.get('/install', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Daily Check-in Bot - Install</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .container {
+          background: white;
+          border-radius: 24px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          max-width: 600px;
+          padding: 3rem;
+          text-align: center;
+        }
+        .logo { font-size: 4rem; margin-bottom: 1rem; }
+        h1 {
+          font-size: 2.5rem;
+          color: #1a1a2e;
+          margin-bottom: 1rem;
+          font-weight: 700;
+        }
+        .tagline {
+          font-size: 1.2rem;
+          color: #6b7280;
+          margin-bottom: 2rem;
+          line-height: 1.6;
+        }
+        .features {
+          text-align: left;
+          margin: 2rem 0;
+          background: #f9fafb;
+          padding: 2rem;
+          border-radius: 16px;
+        }
+        .feature {
+          display: flex;
+          align-items: start;
+          margin-bottom: 1rem;
+        }
+        .feature:last-child { margin-bottom: 0; }
+        .feature-icon {
+          font-size: 1.5rem;
+          margin-right: 1rem;
+          flex-shrink: 0;
+        }
+        .feature-text {
+          color: #374151;
+          line-height: 1.6;
+        }
+        .feature-title {
+          font-weight: 600;
+          color: #1f2937;
+          margin-bottom: 0.25rem;
+        }
+        .install-btn {
+          margin-top: 2rem;
+          transition: transform 0.2s;
+        }
+        .install-btn:hover {
+          transform: translateY(-2px);
+        }
+        .privacy {
+          margin-top: 2rem;
+          font-size: 0.875rem;
+          color: #9ca3af;
+          line-height: 1.5;
+        }
+        .privacy a {
+          color: #667eea;
+          text-decoration: none;
+        }
+        .privacy a:hover {
+          text-decoration: underline;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="logo">📝</div>
+        <h1>Daily Check-in Bot</h1>
+        <p class="tagline">
+          Keep a running record of your work accomplishments with zero friction
+        </p>
+
+        <div class="features">
+          <div class="feature">
+            <div class="feature-icon">🤖</div>
+            <div>
+              <div class="feature-title">AI-Powered</div>
+              <div class="feature-text">Optional AI enhancement cleans up grammar and formatting</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">📄</div>
+            <div>
+              <div class="feature-title">Your Google Doc</div>
+              <div class="feature-text">Logs are saved to a doc you own in your Drive</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🔥</div>
+            <div>
+              <div class="feature-title">Streak Tracking</div>
+              <div class="feature-text">Stay motivated with daily logging streaks</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🔍</div>
+            <div>
+              <div class="feature-title">Smart Search</div>
+              <div class="feature-text">Find past entries instantly with keyword search</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">⏰</div>
+            <div>
+              <div class="feature-title">Daily Reminders</div>
+              <div class="feature-text">Get gentle nudges at your preferred time</div>
+            </div>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🎤</div>
+            <div>
+              <div class="feature-title">Voice Notes</div>
+              <div class="feature-text">Send audio messages - automatically transcribed</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="install-btn">
+          <a href="/slack/install">
+            <img 
+              alt="Add to Slack" 
+              height="40" 
+              width="139" 
+              src="https://platform.slack-edge.com/img/add_to_slack.png" 
+              srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"
+            />
+          </a>
+        </div>
+
+        <div class="privacy">
+          🔒 Your data stays in your Google Drive. We never see your entries.<br>
+          Fully encrypted and secure.
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
 // =============================================================================
 // Register Slack handlers

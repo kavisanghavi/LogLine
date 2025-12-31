@@ -42,6 +42,17 @@ function register(app) {
         const userId = message.user;
         let text = message.text || '';
 
+        // Debug: Log message structure to understand what we're receiving
+        console.log('Message received:', {
+            hasFiles: !!message.files,
+            fileCount: message.files?.length || 0,
+            files: message.files?.map(f => ({
+                mimetype: f.mimetype,
+                filetype: f.filetype,
+                name: f.name
+            }))
+        });
+
         // Check for audio/voice files
         if (message.files && message.files.length > 0) {
             const audioFile = message.files.find(f =>
@@ -52,6 +63,7 @@ function register(app) {
             );
 
             if (audioFile) {
+                console.log('Audio file detected:', audioFile.name, audioFile.mimetype);
                 try {
                     // Download and transcribe the audio
                     const transcription = await transcribeAudio(audioFile, client);

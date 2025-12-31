@@ -95,6 +95,7 @@ AI-generated recap of your week:
 ## 📖 Documentation
 
 - **[Setup Guide](docs/SETUP.md)** - Installation & configuration
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Multi-workspace distribution
 - **[Architecture](docs/ARCHITECTURE.md)** - Technical deep-dive
 
 ---
