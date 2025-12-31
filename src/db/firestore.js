@@ -9,6 +9,7 @@ const { encrypt, decrypt } = require('./encryption');
 // Initialize Firestore
 const db = new Firestore({
     projectId: process.env.GOOGLE_CLOUD_PROJECT,
+    databaseId: 'logline',
 });
 
 // Collection references

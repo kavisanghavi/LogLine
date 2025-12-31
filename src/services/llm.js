@@ -32,22 +32,27 @@ async function refineEntry(rawInput) {
 
     try {
         const client = getClient();
-        const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = client.getGenerativeModel({ model: 'gemini-flash-latest' });
 
-        const prompt = `You are a work log assistant. Take this raw work update and refine it into clean, professional bullet points.
+        const prompt = `You are helping someone write their personal work journal. Clean up this quick note into a clear, natural-sounding entry.
 
 Rules:
-- Keep it concise (one short sentence per bullet)
-- Fix grammar and spelling
-- Maintain the person's voice and meaning
-- If there are multiple items, separate them with newlines
-- Start each item with an action verb when possible
-- Don't add any commentary, just output the refined text
-- If it's already clean, output it as-is
+- Keep it casual and personal, like you're writing for yourself
+- Plain text only, no markdown or formatting
+- Keep the same level of detail as the input (don't trim long entries)
+- Start with an action verb (past tense)
+- If numbers or metrics are mentioned, ALWAYS include them
+- Don't add corporate jargon, keep it natural
+- Preserve the original meaning and important details
 
-Raw input: "${rawInput}"
+Examples:
+- "fixed 3 bugs" → "Fixed 3 bugs in the login flow"
+- "meeting with design" → "Had a sync with the design team"
+- "spent 2 hours debugging the api issue, turns out it was a caching problem" → "Spent 2 hours debugging the API issue - turned out to be a caching problem"
 
-Refined output:`;
+Input: "${rawInput}"
+
+Output:`;
 
         const result = await model.generateContent(prompt);
         const response = result.response.text().trim();
@@ -99,7 +104,7 @@ async function generateWeeklySummary(entries, dateRange) {
 
     try {
         const client = getClient();
-        const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = client.getGenerativeModel({ model: 'gemini-flash-latest' });
 
         const entriesText = entries.map(e =>
             `- ${e.date.toDateString()}: ${e.text}`

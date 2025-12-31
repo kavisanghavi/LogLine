@@ -1,0 +1,42 @@
+# Slack App Manifest
+# Go to https://api.slack.com/apps → Create New App → From an app manifest
+# Paste this YAML and follow the prompts
+
+display_information:
+  name: Daily Check-in
+  description: Log your daily work to Google Docs via DM
+  background_color: "#667eea"
+
+features:
+  bot_user:
+    display_name: Daily Check-in
+    always_online: true
+  slash_commands:
+    - command: /checkin
+      url: https://YOUR_DOMAIN/slack/events
+      description: Manage your daily check-in
+      usage_hint: "[setup | status | weekly | undo | help]"
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - commands
+      - im:history
+      - im:read
+      - im:write
+      - reactions:write
+      - users:read
+
+settings:
+  event_subscriptions:
+    request_url: https://YOUR_DOMAIN/slack/events
+    bot_events:
+      - message.im
+  interactivity:
+    is_enabled: true
+    request_url: https://YOUR_DOMAIN/slack/events
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

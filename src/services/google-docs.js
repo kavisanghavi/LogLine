@@ -26,7 +26,8 @@ async function createCheckinDoc(refreshToken, userName = 'User') {
         },
     });
 
-    // Add initial heading
+    // Add initial heading with proper Title style
+    const titleText = 'Daily Check-ins\n\n';
     await docs.documents.batchUpdate({
         documentId: doc.data.documentId,
         requestBody: {
@@ -34,7 +35,19 @@ async function createCheckinDoc(refreshToken, userName = 'User') {
                 {
                     insertText: {
                         location: { index: 1 },
-                        text: '# Daily Check-ins\n\n',
+                        text: titleText,
+                    },
+                },
+                {
+                    updateParagraphStyle: {
+                        range: {
+                            startIndex: 1,
+                            endIndex: 1 + 'Daily Check-ins'.length,
+                        },
+                        paragraphStyle: {
+                            namedStyleType: 'HEADING_1',
+                        },
+                        fields: 'namedStyleType',
                     },
                 },
             ],
@@ -182,12 +195,30 @@ async function appendEntry(refreshToken, docId, entry, timezone = 'America/New_Y
     const bulletEntry = `• ${entry}\n`;
 
     if (position.needsNewHeading) {
-        // Insert new date heading first
-        const headingText = `\n## ${todayHeading}\n`;
+        // Insert new date heading first, then apply HEADING_2 style
+        const headingText = `\n${todayHeading}\n`;
+        const fullText = headingText + bulletEntry;
+
         requests.push({
             insertText: {
                 location: { index: position.index },
-                text: headingText + bulletEntry,
+                text: fullText,
+            },
+        });
+
+        // Apply HEADING_2 style to the date heading (after insertion)
+        // The heading starts at position.index + 1 (after the newline)
+        // and ends before the newline at the end of the heading
+        requests.push({
+            updateParagraphStyle: {
+                range: {
+                    startIndex: position.index + 1,
+                    endIndex: position.index + 1 + todayHeading.length,
+                },
+                paragraphStyle: {
+                    namedStyleType: 'HEADING_2',
+                },
+                fields: 'namedStyleType',
             },
         });
     } else {

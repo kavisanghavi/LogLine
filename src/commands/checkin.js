@@ -55,6 +55,7 @@ async function handleSetup(command, respond, client) {
     const authUrl = getAuthUrl(state);
 
     await respond({
+        text: 'Set up Daily Check-ins',
         blocks: [
             {
                 type: 'section',
@@ -112,6 +113,7 @@ async function handleStatus(command, respond) {
         const docUrl = `https://docs.google.com/document/d/${user.google_doc_id}/edit`;
 
         await respond({
+            text: 'Daily Check-ins Status',
             blocks: [
                 {
                     type: 'section',
@@ -208,6 +210,7 @@ async function handleUndo(command, respond) {
  */
 async function handleHelp(respond) {
     await respond({
+        text: 'Daily Check-in Help',
         blocks: [
             {
                 type: 'section',

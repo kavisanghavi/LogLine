@@ -7,6 +7,10 @@ const { getUser } = require('../db/firestore');
 const { appendEntry } = require('../services/google-docs');
 const { refineEntry } = require('../services/llm');
 
+// In-memory cache to prevent duplicate message processing
+const processedMessages = new Set();
+const MESSAGE_CACHE_TTL = 60000; // 1 minute
+
 /**
  * Register the message event handler
  * @param {App} app - Bolt app instance
@@ -23,6 +27,17 @@ function register(app) {
         if (message.bot_id || message.subtype) {
             return;
         }
+
+        // Deduplicate: Check if we've already processed this message
+        const messageKey = `${message.channel}:${message.ts}`;
+        if (processedMessages.has(messageKey)) {
+            console.log(`Skipping duplicate message: ${messageKey}`);
+            return;
+        }
+        processedMessages.add(messageKey);
+
+        // Clean up old entries after TTL
+        setTimeout(() => processedMessages.delete(messageKey), MESSAGE_CACHE_TTL);
 
         const userId = message.user;
         const text = message.text;
@@ -45,6 +60,7 @@ function register(app) {
 
             if (!user || !user.google_doc_id) {
                 await say({
+                    text: 'Setup required',
                     blocks: [
                         {
                             type: 'section',
@@ -71,12 +87,16 @@ function register(app) {
                 return;
             }
 
-            // React to show we're processing
-            await client.reactions.add({
-                channel: message.channel,
-                timestamp: message.ts,
-                name: 'hourglass_flowing_sand',
-            });
+            // React to show we're processing (optional, may fail without reactions:write scope)
+            try {
+                await client.reactions.add({
+                    channel: message.channel,
+                    timestamp: message.ts,
+                    name: 'hourglass_flowing_sand',
+                });
+            } catch (e) {
+                // Ignore reaction errors (missing scope, already reacted, etc.)
+            }
 
             // Refine the entry with LLM
             const refinedEntry = await refineEntry(text);
@@ -89,22 +109,31 @@ function register(app) {
                 user.timezone || 'America/New_York'
             );
 
-            // Remove processing reaction, add success
-            await client.reactions.remove({
-                channel: message.channel,
-                timestamp: message.ts,
-                name: 'hourglass_flowing_sand',
-            });
+            // Remove processing reaction, add success (optional)
+            try {
+                await client.reactions.remove({
+                    channel: message.channel,
+                    timestamp: message.ts,
+                    name: 'hourglass_flowing_sand',
+                });
+            } catch (e) {
+                // Ignore
+            }
 
-            await client.reactions.add({
-                channel: message.channel,
-                timestamp: message.ts,
-                name: 'white_check_mark',
-            });
+            try {
+                await client.reactions.add({
+                    channel: message.channel,
+                    timestamp: message.ts,
+                    name: 'white_check_mark',
+                });
+            } catch (e) {
+                // Ignore
+            }
 
             // Send confirmation with refined text if different
             if (refinedEntry !== text) {
                 await say({
+                    text: `Logged: ${refinedEntry.split('\n')[0]}`,
                     blocks: [
                         {
                             type: 'section',
@@ -126,6 +155,7 @@ function register(app) {
                 });
             } else {
                 await say({
+                    text: `Logged: ${text}`,
                     blocks: [
                         {
                             type: 'section',
